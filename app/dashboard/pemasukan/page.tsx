@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   Plus,
@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 
 type Kategori = { id: string; nama: string };
-type Pegawai = { id: string; nama: string };
+type Pegawai = { id: string; nama: string; npp: string };
 type Transaksi = {
   id: string;
   nominal: number;
@@ -80,7 +80,11 @@ export default function PemasukanPage() {
   async function fetchMasterData() {
     const [k, p] = await Promise.all([
       supabase.from("kategori").select("id, nama").eq("jenis", "pemasukan"),
-      supabase.from("pegawai").select("id, nama").eq("aktif", true),
+      supabase
+        .from("pegawai")
+        .select("id, nama, npp")
+        .eq("aktif", true)
+        .order("nama"),
     ]);
     setKategoriList(k.data ?? []);
     setPegawaiList(p.data ?? []);
@@ -340,20 +344,11 @@ export default function PemasukanPage() {
               </Field>
 
               <Field label="Pegawai (opsional)">
-                <select
+                <PegawaiCombobox
+                  list={pegawaiList}
                   value={form.pegawai_id}
-                  onChange={(e) =>
-                    setForm({ ...form, pegawai_id: e.target.value })
-                  }
-                  className="input"
-                >
-                  <option value="">-- Tidak terkait pegawai --</option>
-                  {pegawaiList.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.nama}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(id) => setForm({ ...form, pegawai_id: id })}
+                />
               </Field>
 
               <div className="grid grid-cols-2 gap-4">
@@ -456,6 +451,116 @@ function Field({
         {label}
       </label>
       {children}
+    </div>
+  );
+}
+
+function PegawaiCombobox({
+  list,
+  value,
+  onChange,
+}: {
+  list: Pegawai[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const selected = list.find((p) => p.id === value);
+
+  const filtered = useMemo(() => {
+    const q = query.toLowerCase().trim();
+    if (!q) return list.slice(0, 50);
+    return list
+      .filter(
+        (p) =>
+          p.nama.toLowerCase().includes(q) || p.npp.toLowerCase().includes(q),
+      )
+      .slice(0, 50);
+  }, [query, list]);
+
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  return (
+    <div ref={wrapRef} className="relative">
+      <div className="flex items-center gap-2 input">
+        <input
+          type="text"
+          className="flex-1 bg-transparent outline-none text-white placeholder:text-gray-500"
+          placeholder={
+            selected
+              ? `${selected.nama} (${selected.npp})`
+              : "Cari nama atau NPP..."
+          }
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+        />
+        {selected && (
+          <button
+            type="button"
+            onClick={() => {
+              onChange("");
+              setQuery("");
+            }}
+            className="text-gray-400 hover:text-gray-200"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-lg border border-gray-700 bg-gray-900 shadow-lg">
+          <li>
+            <button
+              type="button"
+              onClick={() => {
+                onChange("");
+                setQuery("");
+                setOpen(false);
+              }}
+              className="w-full px-3 py-2 text-left text-sm text-gray-400 hover:bg-gray-800"
+            >
+              -- Tidak terkait pegawai --
+            </button>
+          </li>
+          {filtered.length === 0 ? (
+            <li className="px-3 py-2 text-sm text-gray-500">
+              Pegawai tidak ditemukan
+            </li>
+          ) : (
+            filtered.map((p) => (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange(p.id);
+                    setQuery("");
+                    setOpen(false);
+                  }}
+                  className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-800 ${
+                    p.id === value ? "bg-gray-800 text-white" : "text-gray-300"
+                  }`}
+                >
+                  {p.nama}{" "}
+                  <span className="text-xs text-gray-500">({p.npp})</span>
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
     </div>
   );
 }

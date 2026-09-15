@@ -302,7 +302,6 @@ function TunggakanCard({
                 <div className="font-mono font-bold text-gray-900 text-sm tracking-wider">
                   {p.inisial}
                 </div>
-                <div className="text-xs text-gray-500">{p.jabatan}</div>
               </div>
             </li>
           ))}

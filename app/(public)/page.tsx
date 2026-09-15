@@ -194,7 +194,12 @@ export default async function LandingPage() {
                     <div className="font-semibold text-gray-900 truncate">
                       {t.kategori ?? "—"}
                     </div>
-                    <div className="text-xs text-gray-500">
+                    {t.jenis === "pengeluaran" && t.catatan && (
+                      <div className="text-xs text-gray-600 mt-0.5 line-clamp-2 italic">
+                        &ldquo;{t.catatan}&rdquo;
+                      </div>
+                    )}
+                    <div className="text-xs text-gray-500 mt-0.5">
                       {tanggal(t.tanggal)}
                     </div>
                   </div>

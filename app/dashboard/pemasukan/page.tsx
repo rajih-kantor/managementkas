@@ -12,10 +12,16 @@ import {
   Loader2,
   ArrowDownCircle,
   Image,
+  Pencil,
 } from "lucide-react";
 
 type Kategori = { id: string; nama: string };
-type Pegawai = { id: string; nama: string; npp: string };
+type Pegawai = {
+  id: string;
+  nama: string;
+  npp: string;
+  iuran_bulanan: number;
+};
 type Transaksi = {
   id: string;
   nominal: number;
@@ -23,6 +29,8 @@ type Transaksi = {
   periode: string;
   catatan: string | null;
   bukti_path: string | null;
+  kategori_id: string | null;
+  pegawai_id: string | null;
   kategori: { nama: string } | null;
   pegawai: { nama: string } | null;
 };
@@ -69,7 +77,78 @@ export default function PemasukanPage() {
     catatan: "",
     file: null as File | null,
   });
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkRange, setBulkRange] = useState({
+    dari: new Date().toISOString().slice(0, 7),
+    sampai: new Date().toISOString().slice(0, 7),
+  });
+  const [editId, setEditId] = useState<string | null>(null);
+  const [existingBuktiPath, setExistingBuktiPath] = useState<string | null>(
+    null,
+  );
   const [submitting, setSubmitting] = useState(false);
+
+  function resetForm() {
+    setForm({
+      kategori_id: "",
+      pegawai_id: "",
+      nominal: "",
+      tanggal: new Date().toISOString().split("T")[0],
+      periode: new Date().toISOString().split("T")[0].slice(0, 7) + "-01",
+      catatan: "",
+      file: null,
+    });
+    setBulkMode(false);
+    setBulkRange({
+      dari: new Date().toISOString().slice(0, 7),
+      sampai: new Date().toISOString().slice(0, 7),
+    });
+    setEditId(null);
+    setExistingBuktiPath(null);
+  }
+
+  function handleEdit(row: Transaksi) {
+    setEditId(row.id);
+    setExistingBuktiPath(row.bukti_path);
+    setBulkMode(false);
+    setForm({
+      kategori_id: row.kategori_id ?? "",
+      pegawai_id: row.pegawai_id ?? "",
+      nominal: String(row.nominal),
+      tanggal: row.tanggal,
+      periode: row.periode,
+      catatan: row.catatan ?? "",
+      file: null,
+    });
+    setShowModal(true);
+  }
+
+  function closeModal() {
+    setShowModal(false);
+    resetForm();
+  }
+
+  const selectedPegawai = pegawaiList.find((p) => p.id === form.pegawai_id);
+  const bulkMonths = useMemo(() => {
+    if (!bulkMode) return [];
+    const [sy, sm] = bulkRange.dari.split("-").map(Number);
+    const [ey, em] = bulkRange.sampai.split("-").map(Number);
+    if (!sy || !sm || !ey || !em) return [];
+    if (ey < sy || (ey === sy && em < sm)) return [];
+    const out: string[] = [];
+    let y = sy;
+    let m = sm;
+    while (y < ey || (y === ey && m <= em)) {
+      out.push(`${y}-${String(m).padStart(2, "0")}-01`);
+      m++;
+      if (m > 12) {
+        m = 1;
+        y++;
+      }
+    }
+    return out;
+  }, [bulkMode, bulkRange]);
+  const bulkTotal = (selectedPegawai?.iuran_bulanan ?? 0) * bulkMonths.length;
 
   // Fetch data
   async function fetchData() {
@@ -78,7 +157,7 @@ export default function PemasukanPage() {
       .from("transaksi")
       .select(
         `
-        id, nominal, tanggal, periode, catatan, bukti_path,
+        id, nominal, tanggal, periode, catatan, bukti_path, kategori_id, pegawai_id,
         kategori:kategori_id (nama),
         pegawai:pegawai_id (nama)
       `,
@@ -99,12 +178,18 @@ export default function PemasukanPage() {
       supabase.from("kategori").select("id, nama").eq("jenis", "pemasukan"),
       supabase
         .from("pegawai")
-        .select("id, nama, npp")
+        .select("id, nama, npp, jabatan:jabatan_id (iuran_bulanan)")
         .eq("aktif", true)
         .order("nama"),
     ]);
     setKategoriList(k.data ?? []);
-    setPegawaiList(p.data ?? []);
+    const pegawaiRows = (p.data ?? []).map((row: any) => ({
+      id: row.id,
+      nama: row.nama,
+      npp: row.npp,
+      iuran_bulanan: Number(row.jabatan?.iuran_bulanan ?? 0),
+    }));
+    setPegawaiList(pegawaiRows);
   }
 
   useEffect(() => {
@@ -114,10 +199,29 @@ export default function PemasukanPage() {
 
   // Submit new pemasukan
   async function handleSubmit() {
-    if (!form.kategori_id || !form.nominal || !form.tanggal) {
-      alert("Kategori, nominal, dan tanggal wajib diisi");
+    if (!form.kategori_id || !form.tanggal) {
+      alert("Kategori dan tanggal wajib diisi");
       return;
     }
+
+    if (bulkMode) {
+      if (!form.pegawai_id) {
+        alert("Pilih pegawai untuk pembayaran iuran beberapa bulan");
+        return;
+      }
+      if (!selectedPegawai || selectedPegawai.iuran_bulanan <= 0) {
+        alert("Jabatan pegawai belum punya iuran bulanan");
+        return;
+      }
+      if (bulkMonths.length === 0) {
+        alert("Rentang periode tidak valid (dari harus ≤ sampai)");
+        return;
+      }
+    } else if (!form.nominal) {
+      alert("Nominal wajib diisi");
+      return;
+    }
+
     setSubmitting(true);
 
     const { data: userData } = await supabase.auth.getUser();
@@ -127,32 +231,77 @@ export default function PemasukanPage() {
       return;
     }
 
-    // Step 1: Insert row
-    const { data: inserted, error: insertErr } = await supabase
-      .from("transaksi")
-      .insert({
-        jenis: "pemasukan",
+    let targetIds: string[] = [];
+
+    if (editId) {
+      // Update mode (single row)
+      const { error: updateErr } = await supabase
+        .from("transaksi")
+        .update({
+          kategori_id: form.kategori_id,
+          pegawai_id: form.pegawai_id || null,
+          nominal: parseInt(form.nominal),
+          tanggal: form.tanggal,
+          periode: form.periode,
+          catatan: form.catatan || null,
+        })
+        .eq("id", editId);
+
+      if (updateErr) {
+        alert("Gagal mengubah: " + updateErr.message);
+        setSubmitting(false);
+        return;
+      }
+      targetIds = [editId];
+    } else {
+      // Insert mode (single atau bulk)
+      const basePayload = {
+        jenis: "pemasukan" as const,
         kategori_id: form.kategori_id,
         pegawai_id: form.pegawai_id || null,
-        nominal: parseInt(form.nominal),
         tanggal: form.tanggal,
-        periode: form.periode,
         catatan: form.catatan || null,
         created_by: userData.user.id,
-      })
-      .select("id")
-      .single();
+      };
 
-    if (insertErr) {
-      alert("Gagal menyimpan: " + insertErr.message);
-      setSubmitting(false);
-      return;
+      const payloads = bulkMode
+        ? bulkMonths.map((periode) => ({
+            ...basePayload,
+            nominal: selectedPegawai!.iuran_bulanan,
+            periode,
+          }))
+        : [
+            {
+              ...basePayload,
+              nominal: parseInt(form.nominal),
+              periode: form.periode,
+            },
+          ];
+
+      const { data: insertedRows, error: insertErr } = await supabase
+        .from("transaksi")
+        .insert(payloads)
+        .select("id");
+
+      if (insertErr) {
+        alert("Gagal menyimpan: " + insertErr.message);
+        setSubmitting(false);
+        return;
+      }
+      targetIds = (insertedRows ?? []).map((r) => r.id);
     }
 
-    // Step 2: Upload bukti (jika ada)
-    if (form.file && inserted) {
+    // Upload bukti baru (replace jika ada bukti lama)
+    if (form.file && targetIds.length > 0) {
       const ext = form.file.name.split(".").pop();
-      const path = `${inserted.id}/bukti.${ext}`;
+      const path = `${targetIds[0]}/bukti.${ext}`;
+
+      if (existingBuktiPath && existingBuktiPath !== path) {
+        await supabase.storage
+          .from("bukti-transaksi")
+          .remove([existingBuktiPath]);
+      }
+
       const { error: uploadErr } = await supabase.storage
         .from("bukti-transaksi")
         .upload(path, form.file, { upsert: true });
@@ -163,21 +312,11 @@ export default function PemasukanPage() {
         await supabase
           .from("transaksi")
           .update({ bukti_path: path })
-          .eq("id", inserted.id);
+          .in("id", targetIds);
       }
     }
 
-    // Reset & refresh
-    setForm({
-      kategori_id: "",
-      pegawai_id: "",
-      nominal: "",
-      tanggal: new Date().toISOString().split("T")[0],
-      periode: new Date().toISOString().split("T")[0].slice(0, 7) + "-01",
-      catatan: "",
-      file: null,
-    });
-    setShowModal(false);
+    closeModal();
     setSubmitting(false);
     fetchData();
   }
@@ -350,7 +489,7 @@ export default function PemasukanPage() {
                     {formatRp(r.nominal)}
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center justify-center gap-2">
+                    <div className="flex items-center justify-center gap-1">
                       {r.bukti_path && (
                         <button
                           onClick={() => handleDownloadBukti(r.bukti_path!)}
@@ -360,6 +499,13 @@ export default function PemasukanPage() {
                           <Image className="w-4 h-4" />
                         </button>
                       )}
+                      <button
+                        onClick={() => handleEdit(r)}
+                        className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
+                        title="Edit"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
                       <button
                         onClick={() => handleDelete(r.id, r.bukti_path)}
                         className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-rose-400 transition-colors"
@@ -382,10 +528,10 @@ export default function PemasukanPage() {
           <div className="bg-gray-900 border border-gray-800 rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-800">
               <h2 className="text-lg font-semibold text-white">
-                Tambah Pemasukan
+                {editId ? "Edit Pemasukan" : "Tambah Pemasukan"}
               </h2>
               <button
-                onClick={() => setShowModal(false)}
+                onClick={closeModal}
                 className="p-1 rounded hover:bg-gray-800 text-gray-400"
               >
                 <X className="w-5 h-5" />
@@ -410,16 +556,42 @@ export default function PemasukanPage() {
                 </select>
               </Field>
 
-              <Field label="Pegawai (opsional)">
+              <Field label={bulkMode ? "Pegawai *" : "Pegawai (opsional)"}>
                 <PegawaiCombobox
                   list={pegawaiList}
                   value={form.pegawai_id}
                   onChange={(id) => setForm({ ...form, pegawai_id: id })}
                 />
+                {bulkMode && selectedPegawai && (
+                  <p className="text-xs text-gray-500 mt-1.5 font-mono">
+                    Iuran: {formatRp(selectedPegawai.iuran_bulanan)}/bulan
+                  </p>
+                )}
               </Field>
 
+              {/* Toggle bulk mode (hanya saat tambah, tidak saat edit) */}
+              {!editId && (
+                <label className="flex items-start gap-2.5 p-3 rounded-lg border border-gray-800 bg-gray-950/40 cursor-pointer hover:border-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={bulkMode}
+                    onChange={(e) => setBulkMode(e.target.checked)}
+                    className="mt-0.5 accent-gray-200"
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm text-white font-medium">
+                      Bayar iuran beberapa bulan sekaligus
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Pilih rentang bulan — sistem buat 1 transaksi per bulan
+                      sesuai iuran jabatan
+                    </p>
+                  </div>
+                </label>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
-                <Field label="Tanggal *">
+                <Field label="Tanggal Bayar *">
                   <input
                     type="date"
                     value={form.tanggal}
@@ -429,29 +601,103 @@ export default function PemasukanPage() {
                     className="input"
                   />
                 </Field>
-                <Field label="Periode *">
+                {!bulkMode && (
+                  <Field label="Periode *">
+                    <input
+                      type="month"
+                      value={form.periode.slice(0, 7)}
+                      onChange={(e) =>
+                        setForm({ ...form, periode: e.target.value + "-01" })
+                      }
+                      className="input"
+                    />
+                  </Field>
+                )}
+              </div>
+
+              {bulkMode ? (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Field label="Dari Periode *">
+                      <input
+                        type="month"
+                        value={bulkRange.dari}
+                        onChange={(e) =>
+                          setBulkRange({ ...bulkRange, dari: e.target.value })
+                        }
+                        className="input"
+                      />
+                    </Field>
+                    <Field label="Sampai Periode *">
+                      <input
+                        type="month"
+                        value={bulkRange.sampai}
+                        onChange={(e) =>
+                          setBulkRange({ ...bulkRange, sampai: e.target.value })
+                        }
+                        className="input"
+                      />
+                    </Field>
+                  </div>
+
+                  <div className="rounded-lg border border-gray-800 bg-gray-950/40 p-4">
+                    <p className="text-xs text-gray-400 mb-2">
+                      Preview transaksi yang akan dibuat
+                    </p>
+                    {bulkMonths.length === 0 ? (
+                      <p className="text-xs text-rose-400">
+                        Rentang tidak valid — pastikan "Dari" ≤ "Sampai"
+                      </p>
+                    ) : !selectedPegawai ? (
+                      <p className="text-xs text-gray-500">
+                        Pilih pegawai dulu untuk melihat preview
+                      </p>
+                    ) : selectedPegawai.iuran_bulanan <= 0 ? (
+                      <p className="text-xs text-rose-400">
+                        Jabatan pegawai ini belum punya iuran bulanan
+                      </p>
+                    ) : (
+                      <>
+                        <ul className="space-y-1 mb-3 max-h-40 overflow-y-auto">
+                          {bulkMonths.map((p) => (
+                            <li
+                              key={p}
+                              className="flex items-center justify-between text-xs"
+                            >
+                              <span className="text-gray-300 font-mono">
+                                {formatTgl(p).slice(3)}
+                              </span>
+                              <span className="text-white font-mono tabular-nums">
+                                {formatRp(selectedPegawai.iuran_bulanan)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="flex items-center justify-between pt-2 border-t border-gray-800">
+                          <span className="text-xs text-gray-400">
+                            {bulkMonths.length} bulan
+                          </span>
+                          <span className="text-sm text-white font-mono tabular-nums font-semibold">
+                            {formatRp(bulkTotal)}
+                          </span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <Field label="Nominal (Rp) *">
                   <input
-                    type="month"
-                    value={form.periode.slice(0, 7)}
+                    type="number"
+                    placeholder="150000"
+                    value={form.nominal}
                     onChange={(e) =>
-                      setForm({ ...form, periode: e.target.value + "-01" })
+                      setForm({ ...form, nominal: e.target.value })
                     }
                     className="input"
                   />
                 </Field>
-              </div>
-
-              <Field label="Nominal (Rp) *">
-                <input
-                  type="number"
-                  placeholder="150000"
-                  value={form.nominal}
-                  onChange={(e) =>
-                    setForm({ ...form, nominal: e.target.value })
-                  }
-                  className="input"
-                />
-              </Field>
+              )}
 
               <Field label="Catatan">
                 <textarea
@@ -468,7 +714,10 @@ export default function PemasukanPage() {
                 <label className="flex items-center gap-2 border border-dashed border-gray-700 rounded-lg px-4 py-3 cursor-pointer hover:border-gray-600 transition-colors">
                   <Upload className="w-4 h-4 text-gray-400" />
                   <span className="text-sm text-gray-400 flex-1 truncate">
-                    {form.file?.name ?? "Pilih file (opsional)"}
+                    {form.file?.name ??
+                      (existingBuktiPath
+                        ? "Bukti tersimpan — pilih file baru untuk mengganti"
+                        : "Pilih file (opsional)")}
                   </span>
                   <input
                     type="file"
@@ -484,7 +733,7 @@ export default function PemasukanPage() {
 
             <div className="flex items-center justify-end gap-2 p-6 border-t border-gray-800">
               <button
-                onClick={() => setShowModal(false)}
+                onClick={closeModal}
                 className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
               >
                 Batal
@@ -495,7 +744,7 @@ export default function PemasukanPage() {
                 className="flex items-center gap-2 bg-gray-100 text-gray-900 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-white disabled:opacity-50 transition-colors"
               >
                 {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                Simpan
+                {editId ? "Simpan Perubahan" : "Simpan"}
               </button>
             </div>
           </div>

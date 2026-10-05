@@ -11,6 +11,7 @@ import {
   X,
   Loader2,
   ArrowUpCircle,
+  Pencil,
 } from "lucide-react";
 
 type Kategori = { id: string; nama: string };
@@ -23,6 +24,8 @@ type Transaksi = {
   periode: string;
   catatan: string | null;
   bukti_path: string | null;
+  kategori_id: string | null;
+  pic_pegawai_id: string | null;
   kategori: { nama: string } | null;
   pic: { nama: string } | null;
 };
@@ -43,6 +46,10 @@ export default function PengeluaranPage() {
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [pegawaiList, setPegawaiList] = useState<Pegawai[]>([]);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [existingBuktiPath, setExistingBuktiPath] = useState<string | null>(
+    null,
+  );
 
   const [form, setForm] = useState({
     kategori_id: "",
@@ -60,7 +67,7 @@ export default function PengeluaranPage() {
       .from("transaksi")
       .select(
         `
-        id, nominal, tanggal, periode, catatan, bukti_path,
+        id, nominal, tanggal, periode, catatan, bukti_path, kategori_id, pic_pegawai_id,
         kategori:kategori_id (nama),
         pic:pic_pegawai_id (nama)
       `,
@@ -98,6 +105,40 @@ export default function PengeluaranPage() {
     fetchPegawai();
   }, []);
 
+  function resetForm() {
+    setForm({
+      kategori_id: "",
+      nominal: "",
+      tanggal: new Date().toISOString().split("T")[0],
+      periode: new Date().toISOString().split("T")[0].slice(0, 7) + "-01",
+      pic_pegawai_id: "",
+      catatan: "",
+      file: null,
+    });
+    setEditId(null);
+    setExistingBuktiPath(null);
+  }
+
+  function handleEdit(row: Transaksi) {
+    setEditId(row.id);
+    setExistingBuktiPath(row.bukti_path);
+    setForm({
+      kategori_id: row.kategori_id ?? "",
+      nominal: String(row.nominal),
+      tanggal: row.tanggal,
+      periode: row.periode,
+      catatan: row.catatan ?? "",
+      pic_pegawai_id: row.pic_pegawai_id ?? "",
+      file: null,
+    });
+    setShowModal(true);
+  }
+
+  function closeModal() {
+    setShowModal(false);
+    resetForm();
+  }
+
   async function handleSubmit() {
     if (!form.kategori_id || !form.nominal || !form.tanggal) {
       alert("Kategori, nominal, dan tanggal wajib diisi");
@@ -116,33 +157,65 @@ export default function PengeluaranPage() {
       return;
     }
 
-    // Step 1: Insert
-    const { data: inserted, error: insertErr } = await supabase
-      .from("transaksi")
-      .insert({
-        jenis: "pengeluaran",
-        kategori_id: form.kategori_id,
-        pegawai_id: null,
-        pic_pegawai_id: form.pic_pegawai_id || null,
-        nominal: parseInt(form.nominal),
-        tanggal: form.tanggal,
-        periode: form.periode,
-        catatan: form.catatan.trim(),
-        created_by: userData.user.id,
-      })
-      .select("id")
-      .single();
+    let targetId = editId;
 
-    if (insertErr) {
-      alert("Gagal menyimpan: " + insertErr.message);
-      setSubmitting(false);
-      return;
+    if (editId) {
+      // Update
+      const { error: updateErr } = await supabase
+        .from("transaksi")
+        .update({
+          kategori_id: form.kategori_id,
+          pic_pegawai_id: form.pic_pegawai_id || null,
+          nominal: parseInt(form.nominal),
+          tanggal: form.tanggal,
+          periode: form.periode,
+          catatan: form.catatan.trim(),
+        })
+        .eq("id", editId);
+
+      if (updateErr) {
+        alert("Gagal mengubah: " + updateErr.message);
+        setSubmitting(false);
+        return;
+      }
+    } else {
+      // Insert
+      const { data: inserted, error: insertErr } = await supabase
+        .from("transaksi")
+        .insert({
+          jenis: "pengeluaran",
+          kategori_id: form.kategori_id,
+          pegawai_id: null,
+          pic_pegawai_id: form.pic_pegawai_id || null,
+          nominal: parseInt(form.nominal),
+          tanggal: form.tanggal,
+          periode: form.periode,
+          catatan: form.catatan.trim(),
+          created_by: userData.user.id,
+        })
+        .select("id")
+        .single();
+
+      if (insertErr) {
+        alert("Gagal menyimpan: " + insertErr.message);
+        setSubmitting(false);
+        return;
+      }
+      targetId = inserted.id;
     }
 
-    // Step 2: Upload bukti
-    if (form.file && inserted) {
+    // Upload bukti baru (replace kalau ada)
+    if (form.file && targetId) {
       const ext = form.file.name.split(".").pop();
-      const path = `${inserted.id}/bukti.${ext}`;
+      const path = `${targetId}/bukti.${ext}`;
+
+      // Hapus bukti lama kalau ekstensinya beda
+      if (existingBuktiPath && existingBuktiPath !== path) {
+        await supabase.storage
+          .from("bukti-transaksi")
+          .remove([existingBuktiPath]);
+      }
+
       const { error: uploadErr } = await supabase.storage
         .from("bukti-transaksi")
         .upload(path, form.file, { upsert: true });
@@ -153,20 +226,11 @@ export default function PengeluaranPage() {
         await supabase
           .from("transaksi")
           .update({ bukti_path: path })
-          .eq("id", inserted.id);
+          .eq("id", targetId);
       }
     }
 
-    setForm({
-      kategori_id: "",
-      nominal: "",
-      tanggal: new Date().toISOString().split("T")[0],
-      periode: new Date().toISOString().split("T")[0].slice(0, 7) + "-01",
-      pic_pegawai_id: "",
-      catatan: "",
-      file: null,
-    });
-    setShowModal(false);
+    closeModal();
     setSubmitting(false);
     fetchData();
   }
@@ -370,6 +434,13 @@ export default function PengeluaranPage() {
                         </button>
                       )}
                       <button
+                        onClick={() => handleEdit(r)}
+                        className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
+                        title="Edit"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button
                         onClick={() => handleDelete(r.id, r.bukti_path)}
                         className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-rose-400 transition-colors"
                         title="Hapus"
@@ -391,10 +462,10 @@ export default function PengeluaranPage() {
           <div className="bg-gray-900 border border-gray-800 rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-800">
               <h2 className="text-lg font-semibold text-white">
-                Tambah Pengeluaran
+                {editId ? "Edit Pengeluaran" : "Tambah Pengeluaran"}
               </h2>
               <button
-                onClick={() => setShowModal(false)}
+                onClick={closeModal}
                 className="p-1 rounded hover:bg-gray-800 text-gray-400"
               >
                 <X className="w-5 h-5" />
@@ -490,7 +561,10 @@ export default function PengeluaranPage() {
                 <label className="flex items-center gap-2 border border-dashed border-gray-700 rounded-lg px-4 py-3 cursor-pointer hover:border-gray-600 transition-colors">
                   <Upload className="w-4 h-4 text-gray-400" />
                   <span className="text-sm text-gray-400 flex-1 truncate">
-                    {form.file?.name ?? "Pilih file (nota / kwitansi)"}
+                    {form.file?.name ??
+                      (existingBuktiPath
+                        ? "Bukti tersimpan — pilih file baru untuk mengganti"
+                        : "Pilih file (nota / kwitansi)")}
                   </span>
                   <input
                     type="file"
@@ -506,7 +580,7 @@ export default function PengeluaranPage() {
 
             <div className="flex items-center justify-end gap-2 p-6 border-t border-gray-800">
               <button
-                onClick={() => setShowModal(false)}
+                onClick={closeModal}
                 className="px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
               >
                 Batal
@@ -517,7 +591,7 @@ export default function PengeluaranPage() {
                 className="flex items-center gap-2 bg-gray-100 text-gray-900 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-white disabled:opacity-50 transition-colors"
               >
                 {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                Simpan
+                {editId ? "Simpan Perubahan" : "Simpan"}
               </button>
             </div>
           </div>

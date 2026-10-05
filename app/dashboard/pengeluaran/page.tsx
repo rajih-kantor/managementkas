@@ -36,6 +36,21 @@ const formatTgl = (d: string) => {
   return `${day}/${m}/${y}`;
 };
 
+const BULAN = [
+  "Januari",
+  "Februari",
+  "Maret",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Agustus",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
+];
+
 export default function PengeluaranPage() {
   const supabase = createClient();
   const [rows, setRows] = useState<Transaksi[]>([]);
@@ -43,6 +58,8 @@ export default function PengeluaranPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterKategori, setFilterKategori] = useState<string>("");
+  const [filterBulan, setFilterBulan] = useState<string>("");
+  const [filterTahun, setFilterTahun] = useState<string>("");
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [pegawaiList, setPegawaiList] = useState<Pegawai[]>([]);
@@ -254,6 +271,15 @@ export default function PengeluaranPage() {
     window.open(data.signedUrl, "_blank");
   }
 
+  // Daftar tahun unik dari data (untuk opsi filter)
+  const tahunList = useMemo(() => {
+    const set = new Set<string>();
+    rows.forEach((r) => set.add(r.tanggal.slice(0, 4)));
+    const now = new Date().getFullYear().toString();
+    set.add(now);
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [rows]);
+
   // Filter
   const filtered = rows.filter((r) => {
     const matchSearch =
@@ -262,7 +288,10 @@ export default function PengeluaranPage() {
       (r.catatan ?? "").toLowerCase().includes(search.toLowerCase());
     const matchKategori =
       !filterKategori || r.kategori?.nama === filterKategori;
-    return matchSearch && matchKategori;
+    const [y, m] = r.tanggal.split("-");
+    const matchBulan = !filterBulan || m === filterBulan;
+    const matchTahun = !filterTahun || y === filterTahun;
+    return matchSearch && matchKategori && matchBulan && matchTahun;
   });
 
   const totalPengeluaran = filtered.reduce((sum, r) => sum + r.nominal, 0);
@@ -342,8 +371,8 @@ export default function PengeluaranPage() {
       </div>
 
       {/* Search + Filter */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
+      <div className="flex flex-col sm:flex-row flex-wrap gap-3">
+        <div className="relative flex-1 min-w-[220px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
           <input
             type="text"
@@ -365,6 +394,42 @@ export default function PengeluaranPage() {
             </option>
           ))}
         </select>
+        <select
+          value={filterBulan}
+          onChange={(e) => setFilterBulan(e.target.value)}
+          className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-gray-600 min-w-[150px]"
+        >
+          <option value="">Semua Bulan</option>
+          {BULAN.map((nama, i) => (
+            <option key={i} value={String(i + 1).padStart(2, "0")}>
+              {nama}
+            </option>
+          ))}
+        </select>
+        <select
+          value={filterTahun}
+          onChange={(e) => setFilterTahun(e.target.value)}
+          className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-gray-600 min-w-[120px]"
+        >
+          <option value="">Semua Tahun</option>
+          {tahunList.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+        {(filterBulan || filterTahun || filterKategori) && (
+          <button
+            onClick={() => {
+              setFilterBulan("");
+              setFilterTahun("");
+              setFilterKategori("");
+            }}
+            className="px-4 py-2.5 text-sm text-gray-400 hover:text-white border border-gray-800 rounded-lg hover:bg-gray-900 transition-colors"
+          >
+            Reset
+          </button>
+        )}
       </div>
 
       {/* Table */}
@@ -375,7 +440,7 @@ export default function PengeluaranPage() {
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-16 text-gray-500 text-sm">
-            {search || filterKategori
+            {search || filterKategori || filterBulan || filterTahun
               ? "Pengeluaran tidak ditemukan"
               : "Belum ada data pengeluaran"}
           </div>

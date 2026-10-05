@@ -33,6 +33,21 @@ const formatTgl = (d: string) => {
   return `${day}/${m}/${y}`;
 };
 
+const BULAN = [
+  "Januari",
+  "Februari",
+  "Maret",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Agustus",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
+];
+
 export default function PemasukanPage() {
   const supabase = createClient();
   const [rows, setRows] = useState<Transaksi[]>([]);
@@ -40,6 +55,8 @@ export default function PemasukanPage() {
   const [pegawaiList, setPegawaiList] = useState<Pegawai[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [filterBulan, setFilterBulan] = useState<string>("");
+  const [filterTahun, setFilterTahun] = useState<string>("");
   const [showModal, setShowModal] = useState(false);
 
   // Form state
@@ -184,13 +201,26 @@ export default function PemasukanPage() {
     window.open(data.signedUrl, "_blank");
   }
 
+  // Daftar tahun unik dari data (untuk opsi filter)
+  const tahunList = useMemo(() => {
+    const set = new Set<string>();
+    rows.forEach((r) => set.add(r.tanggal.slice(0, 4)));
+    const now = new Date().getFullYear().toString();
+    set.add(now);
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [rows]);
+
   // Filter
-  const filtered = rows.filter(
-    (r) =>
+  const filtered = rows.filter((r) => {
+    const matchSearch =
       (r.kategori?.nama ?? "").toLowerCase().includes(search.toLowerCase()) ||
       (r.pegawai?.nama ?? "").toLowerCase().includes(search.toLowerCase()) ||
-      (r.catatan ?? "").toLowerCase().includes(search.toLowerCase()),
-  );
+      (r.catatan ?? "").toLowerCase().includes(search.toLowerCase());
+    const [y, m] = r.tanggal.split("-");
+    const matchBulan = !filterBulan || m === filterBulan;
+    const matchTahun = !filterTahun || y === filterTahun;
+    return matchSearch && matchBulan && matchTahun;
+  });
 
   const totalPemasukan = filtered.reduce((sum, r) => sum + r.nominal, 0);
 
@@ -227,16 +257,53 @@ export default function PemasukanPage() {
         </p>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-        <input
-          type="text"
-          placeholder="Cari kategori, pegawai, atau catatan..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-gray-900 border border-gray-800 rounded-lg pl-10 pr-4 py-2.5 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-gray-600"
-        />
+      {/* Search + Filter Periode */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+          <input
+            type="text"
+            placeholder="Cari kategori, pegawai, atau catatan..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full bg-gray-900 border border-gray-800 rounded-lg pl-10 pr-4 py-2.5 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-gray-600"
+          />
+        </div>
+        <select
+          value={filterBulan}
+          onChange={(e) => setFilterBulan(e.target.value)}
+          className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-gray-600 min-w-[150px]"
+        >
+          <option value="">Semua Bulan</option>
+          {BULAN.map((nama, i) => (
+            <option key={i} value={String(i + 1).padStart(2, "0")}>
+              {nama}
+            </option>
+          ))}
+        </select>
+        <select
+          value={filterTahun}
+          onChange={(e) => setFilterTahun(e.target.value)}
+          className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-gray-600 min-w-[120px]"
+        >
+          <option value="">Semua Tahun</option>
+          {tahunList.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+        {(filterBulan || filterTahun) && (
+          <button
+            onClick={() => {
+              setFilterBulan("");
+              setFilterTahun("");
+            }}
+            className="px-4 py-2.5 text-sm text-gray-400 hover:text-white border border-gray-800 rounded-lg hover:bg-gray-900 transition-colors"
+          >
+            Reset
+          </button>
+        )}
       </div>
 
       {/* Table */}

@@ -88,6 +88,35 @@ export default function PemasukanPage() {
   );
   const [submitting, setSubmitting] = useState(false);
 
+  // Opsi periode: 24 bulan ke belakang + 6 bulan ke depan dari bulan ini
+  const periodeOptions = useMemo(() => {
+    const now = new Date();
+    const list: { value: string; label: string }[] = [];
+    for (let i = -24; i <= 6; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      list.push({
+        value: `${y}-${String(m + 1).padStart(2, "0")}-01`,
+        label: `${BULAN[m]} ${y}`,
+      });
+    }
+    return list;
+  }, []);
+
+  // Pastikan periode row yang di-edit tetap muncul meski di luar window default
+  const periodeOptionsForForm = useMemo(() => {
+    if (!form.periode || periodeOptions.some((o) => o.value === form.periode)) {
+      return periodeOptions;
+    }
+    const [y, m] = form.periode.split("-");
+    const monthIdx = parseInt(m, 10) - 1;
+    return [
+      { value: form.periode, label: `${BULAN[monthIdx]} ${y}` },
+      ...periodeOptions,
+    ];
+  }, [form.periode, periodeOptions]);
+
   function resetForm() {
     setForm({
       kategori_id: "",
@@ -603,14 +632,19 @@ export default function PemasukanPage() {
                 </Field>
                 {!bulkMode && (
                   <Field label="Periode *">
-                    <input
-                      type="month"
-                      value={form.periode.slice(0, 7)}
+                    <select
+                      value={form.periode}
                       onChange={(e) =>
-                        setForm({ ...form, periode: e.target.value + "-01" })
+                        setForm({ ...form, periode: e.target.value })
                       }
                       className="input"
-                    />
+                    >
+                      {periodeOptionsForForm.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
                   </Field>
                 )}
               </div>

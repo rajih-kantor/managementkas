@@ -12,6 +12,7 @@ import {
   Loader2,
   ArrowUpCircle,
   Pencil,
+  Receipt,
 } from "lucide-react";
 
 type Kategori = { id: string; nama: string };
@@ -24,6 +25,7 @@ type Transaksi = {
   periode: string;
   catatan: string | null;
   bukti_path: string | null;
+  bukti_reimburse_path: string | null;
   kategori_id: string | null;
   pic_pegawai_id: string | null;
   kategori: { nama: string } | null;
@@ -67,6 +69,9 @@ export default function PengeluaranPage() {
   const [existingBuktiPath, setExistingBuktiPath] = useState<string | null>(
     null,
   );
+  const [existingReimbursePath, setExistingReimbursePath] = useState<
+    string | null
+  >(null);
 
   const [form, setForm] = useState({
     kategori_id: "",
@@ -76,6 +81,7 @@ export default function PengeluaranPage() {
     catatan: "",
     pic_pegawai_id: "",
     file: null as File | null,
+    fileReimburse: null as File | null,
   });
 
   async function fetchData() {
@@ -84,7 +90,7 @@ export default function PengeluaranPage() {
       .from("transaksi")
       .select(
         `
-        id, nominal, tanggal, periode, catatan, bukti_path, kategori_id, pic_pegawai_id,
+        id, nominal, tanggal, periode, catatan, bukti_path, bukti_reimburse_path, kategori_id, pic_pegawai_id,
         kategori:kategori_id (nama),
         pic:pic_pegawai_id (nama)
       `,
@@ -131,14 +137,17 @@ export default function PengeluaranPage() {
       pic_pegawai_id: "",
       catatan: "",
       file: null,
+      fileReimburse: null,
     });
     setEditId(null);
     setExistingBuktiPath(null);
+    setExistingReimbursePath(null);
   }
 
   function handleEdit(row: Transaksi) {
     setEditId(row.id);
     setExistingBuktiPath(row.bukti_path);
+    setExistingReimbursePath(row.bukti_reimburse_path);
     setForm({
       kategori_id: row.kategori_id ?? "",
       nominal: String(row.nominal),
@@ -147,6 +156,7 @@ export default function PengeluaranPage() {
       catatan: row.catatan ?? "",
       pic_pegawai_id: row.pic_pegawai_id ?? "",
       file: null,
+      fileReimburse: null,
     });
     setShowModal(true);
   }
@@ -247,16 +257,51 @@ export default function PengeluaranPage() {
       }
     }
 
+    // Upload bukti reimburse (penggantian uang ke PIC)
+    if (form.fileReimburse && targetId) {
+      const ext = form.fileReimburse.name.split(".").pop();
+      const path = `${targetId}/reimburse.${ext}`;
+
+      if (existingReimbursePath && existingReimbursePath !== path) {
+        await supabase.storage
+          .from("bukti-transaksi")
+          .remove([existingReimbursePath]);
+      }
+
+      const { error: uploadErr } = await supabase.storage
+        .from("bukti-transaksi")
+        .upload(path, form.fileReimburse, { upsert: true });
+
+      if (uploadErr) {
+        alert(
+          "Data tersimpan, tapi upload bukti reimburse gagal: " +
+            uploadErr.message,
+        );
+      } else {
+        await supabase
+          .from("transaksi")
+          .update({ bukti_reimburse_path: path })
+          .eq("id", targetId);
+      }
+    }
+
     closeModal();
     setSubmitting(false);
     fetchData();
   }
 
-  async function handleDelete(id: string, buktiPath: string | null) {
+  async function handleDelete(
+    id: string,
+    buktiPath: string | null,
+    reimbursePath: string | null,
+  ) {
     if (!confirm("Hapus pengeluaran ini? Aksi tidak bisa dibatalkan.")) return;
 
-    if (buktiPath) {
-      await supabase.storage.from("bukti-transaksi").remove([buktiPath]);
+    const toRemove = [buktiPath, reimbursePath].filter(
+      (p): p is string => !!p,
+    );
+    if (toRemove.length > 0) {
+      await supabase.storage.from("bukti-transaksi").remove(toRemove);
     }
     const { error } = await supabase.from("transaksi").delete().eq("id", id);
     if (error) return alert("Gagal menghapus: " + error.message);
@@ -493,9 +538,20 @@ export default function PengeluaranPage() {
                         <button
                           onClick={() => handleDownloadBukti(r.bukti_path!)}
                           className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
-                          title="Lihat bukti"
+                          title="Lihat bukti pengeluaran"
                         >
                           <Download className="w-4 h-4" />
+                        </button>
+                      )}
+                      {r.bukti_reimburse_path && (
+                        <button
+                          onClick={() =>
+                            handleDownloadBukti(r.bukti_reimburse_path!)
+                          }
+                          className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors"
+                          title="Lihat bukti penggantian / reimburse"
+                        >
+                          <Receipt className="w-4 h-4" />
                         </button>
                       )}
                       <button
@@ -506,7 +562,13 @@ export default function PengeluaranPage() {
                         <Pencil className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => handleDelete(r.id, r.bukti_path)}
+                        onClick={() =>
+                          handleDelete(
+                            r.id,
+                            r.bukti_path,
+                            r.bukti_reimburse_path,
+                          )
+                        }
                         className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-rose-400 transition-colors"
                         title="Hapus"
                       >
@@ -640,6 +702,41 @@ export default function PengeluaranPage() {
                     className="hidden"
                   />
                 </label>
+              </Field>
+
+              <Field label="Bukti Penggantian / Reimburse ke PIC">
+                <label
+                  className={`flex items-center gap-2 border border-dashed rounded-lg px-4 py-3 transition-colors ${
+                    form.pic_pegawai_id
+                      ? "border-gray-700 cursor-pointer hover:border-gray-600"
+                      : "border-gray-800 opacity-50 cursor-not-allowed"
+                  }`}
+                >
+                  <Receipt className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm text-gray-400 flex-1 truncate">
+                    {form.fileReimburse?.name ??
+                      (existingReimbursePath
+                        ? "Bukti penggantian tersimpan — pilih file baru untuk mengganti"
+                        : "Pilih file bukti transfer / pembayaran ke PIC")}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    disabled={!form.pic_pegawai_id}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        fileReimburse: e.target.files?.[0] ?? null,
+                      })
+                    }
+                    className="hidden"
+                  />
+                </label>
+                <p className="text-xs text-gray-500 mt-1.5">
+                  {form.pic_pegawai_id
+                    ? "Upload bukti bahwa bendahara sudah mengganti uang PIC yang menalangi"
+                    : "Pilih PIC terlebih dahulu untuk mengaktifkan input ini"}
+                </p>
               </Field>
             </div>
 

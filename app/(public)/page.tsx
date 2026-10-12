@@ -27,6 +27,15 @@ const rupiah = (n: number) =>
     minimumFractionDigits: 0,
   }).format(n);
 
+// Samarkan 1 digit depan nominal (untuk kategori sensitif seperti hadiah)
+const rupiahSamar = (n: number) => rupiah(n).replace(/\d/, "*");
+
+const isKategoriSensitif = (kategori?: string | null) =>
+  !!kategori && /hadiah/i.test(kategori);
+
+const isKategoriIuran = (kategori?: string | null) =>
+  !!kategori && /iuran/i.test(kategori);
+
 const tanggal = (d: string) => {
   const [y, m, day] = d.split("-");
   return `${day}/${m}/${y}`;
@@ -173,48 +182,63 @@ export default async function LandingPage() {
               Belum ada transaksi
             </div>
           ) : (
-            <ul className="divide-y divide-amber-100">
-              {feed.map((t: any) => (
-                <li
-                  key={t.id}
-                  className="p-4 flex items-center gap-4 hover:bg-amber-50 transition"
-                >
-                  <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                      t.jenis === "pemasukan" ? "bg-green-100" : "bg-red-100"
-                    }`}
+            <ul className="divide-y divide-amber-100 max-h-[32rem] overflow-y-auto scroll-smooth">
+              {feed.map((t: any) => {
+                const sensitif = isKategoriSensitif(t.kategori);
+                const iuran = isKategoriIuran(t.kategori);
+                return (
+                  <li
+                    key={t.id}
+                    className="p-4 flex items-center gap-4 hover:bg-amber-50 transition"
                   >
-                    {t.jenis === "pemasukan" ? (
-                      <ArrowUpRight className="w-5 h-5 text-green-600" />
-                    ) : (
-                      <ArrowDownRight className="w-5 h-5 text-red-600" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-gray-900 truncate">
-                      {t.kategori ?? "—"}
+                    <div
+                      className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        t.jenis === "pemasukan" ? "bg-green-100" : "bg-red-100"
+                      }`}
+                    >
+                      {t.jenis === "pemasukan" ? (
+                        <ArrowUpRight className="w-5 h-5 text-green-600" />
+                      ) : (
+                        <ArrowDownRight className="w-5 h-5 text-red-600" />
+                      )}
                     </div>
-                    {t.jenis === "pengeluaran" && t.catatan && (
-                      <div className="text-xs text-gray-600 mt-0.5 line-clamp-2 italic">
-                        &ldquo;{t.catatan}&rdquo;
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-gray-900 truncate">
+                        {t.kategori ?? "—"}
                       </div>
-                    )}
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      {tanggal(t.tanggal)}
+                      {iuran && t.pegawai && (
+                        <div className="text-xs text-gray-600 mt-0.5 truncate">
+                          Dibayar oleh{" "}
+                          <span className="font-semibold text-gray-800">
+                            {t.pegawai}
+                          </span>
+                        </div>
+                      )}
+                      {t.jenis === "pengeluaran" &&
+                        t.catatan &&
+                        !sensitif && (
+                          <div className="text-xs text-gray-600 mt-0.5 line-clamp-2 italic">
+                            &ldquo;{t.catatan}&rdquo;
+                          </div>
+                        )}
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {tanggal(t.tanggal)}
+                      </div>
                     </div>
-                  </div>
-                  <div
-                    className={`font-mono tabular-nums font-bold ${
-                      t.jenis === "pemasukan"
-                        ? "text-green-600"
-                        : "text-red-600"
-                    }`}
-                  >
-                    {t.jenis === "pemasukan" ? "+" : "-"}
-                    {rupiah(t.nominal)}
-                  </div>
-                </li>
-              ))}
+                    <div
+                      className={`font-mono tabular-nums font-bold ${
+                        t.jenis === "pemasukan"
+                          ? "text-green-600"
+                          : "text-red-600"
+                      }`}
+                      title={sensitif ? "Nominal disamarkan" : undefined}
+                    >
+                      {t.jenis === "pemasukan" ? "+" : "-"}
+                      {sensitif ? rupiahSamar(t.nominal) : rupiah(t.nominal)}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -294,17 +318,17 @@ function TunggakanCard({
           <div className="text-xs text-gray-400">Mantap 🎊</div>
         </div>
       ) : (
-        <ul className="space-y-2">
+        <ul className="space-y-2 max-h-96 overflow-y-auto pr-1 scroll-smooth">
           {data.map((p, i) => (
             <li
               key={i}
               className="flex items-center gap-3 p-2.5 rounded-xl bg-gray-50"
             >
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-300 to-gray-400 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-300 to-gray-400 flex items-center justify-center shrink-0">
                 <Users className="w-4 h-4 text-white" />
               </div>
-              <div className="flex-1">
-                <div className="font-mono font-bold text-gray-900 text-sm tracking-wider">
+              <div className="flex-1 min-w-0">
+                <div className="font-mono font-bold text-gray-900 text-sm tracking-wider truncate">
                   {p.inisial}
                 </div>
               </div>

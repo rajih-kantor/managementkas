@@ -13,7 +13,13 @@ import {
   ArrowDownCircle,
   Image,
   Pencil,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
+
+type SortKey = "tanggal" | "kategori" | "pegawai" | "nominal";
+type SortDir = "asc" | "desc";
 
 type Kategori = { id: string; nama: string };
 type Pegawai = {
@@ -65,7 +71,18 @@ export default function PemasukanPage() {
   const [search, setSearch] = useState("");
   const [filterBulan, setFilterBulan] = useState<string>("");
   const [filterTahun, setFilterTahun] = useState<string>("");
+  const [sortBy, setSortBy] = useState<SortKey>("tanggal");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [showModal, setShowModal] = useState(false);
+
+  function toggleSort(key: SortKey) {
+    if (sortBy === key) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(key);
+      setSortDir(key === "tanggal" || key === "nominal" ? "desc" : "asc");
+    }
+  }
 
   // Form state
   const [form, setForm] = useState({
@@ -392,6 +409,36 @@ export default function PemasukanPage() {
 
   const totalPemasukan = filtered.reduce((sum, r) => sum + r.nominal, 0);
 
+  const sorted = useMemo(() => {
+    const arr = [...filtered];
+    arr.sort((a, b) => {
+      let va: string | number = "";
+      let vb: string | number = "";
+      switch (sortBy) {
+        case "tanggal":
+          va = a.periode;
+          vb = b.periode;
+          break;
+        case "kategori":
+          va = (a.kategori?.nama ?? "").toLowerCase();
+          vb = (b.kategori?.nama ?? "").toLowerCase();
+          break;
+        case "pegawai":
+          va = (a.pegawai?.nama ?? "").toLowerCase();
+          vb = (b.pegawai?.nama ?? "").toLowerCase();
+          break;
+        case "nominal":
+          va = a.nominal;
+          vb = b.nominal;
+          break;
+      }
+      if (va < vb) return sortDir === "asc" ? -1 : 1;
+      if (va > vb) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+    return arr;
+  }, [filtered, sortBy, sortDir]);
+
   return (
     <div className="p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -488,16 +535,45 @@ export default function PemasukanPage() {
           <table className="w-full text-sm">
             <thead className="bg-gray-950/50 border-b border-gray-800">
               <tr className="text-left text-xs text-gray-400 uppercase tracking-wider">
-                <th className="px-6 py-3 font-medium">Tanggal</th>
-                <th className="px-6 py-3 font-medium">Kategori</th>
-                <th className="px-6 py-3 font-medium">Pegawai</th>
+                <th className="px-6 py-3 font-medium">
+                  <SortHeader
+                    label="Tanggal"
+                    active={sortBy === "tanggal"}
+                    dir={sortDir}
+                    onClick={() => toggleSort("tanggal")}
+                  />
+                </th>
+                <th className="px-6 py-3 font-medium">
+                  <SortHeader
+                    label="Kategori"
+                    active={sortBy === "kategori"}
+                    dir={sortDir}
+                    onClick={() => toggleSort("kategori")}
+                  />
+                </th>
+                <th className="px-6 py-3 font-medium">
+                  <SortHeader
+                    label="Pegawai"
+                    active={sortBy === "pegawai"}
+                    dir={sortDir}
+                    onClick={() => toggleSort("pegawai")}
+                  />
+                </th>
                 <th className="px-6 py-3 font-medium">Catatan</th>
-                <th className="px-6 py-3 font-medium text-right">Nominal</th>
+                <th className="px-6 py-3 font-medium text-right">
+                  <SortHeader
+                    label="Nominal"
+                    active={sortBy === "nominal"}
+                    dir={sortDir}
+                    onClick={() => toggleSort("nominal")}
+                    align="right"
+                  />
+                </th>
                 <th className="px-6 py-3 font-medium text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
-              {filtered.map((r) => (
+              {sorted.map((r) => (
                 <tr
                   key={r.id}
                   className="hover:bg-gray-800/30 transition-colors"
@@ -785,6 +861,34 @@ export default function PemasukanPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function SortHeader({
+  label,
+  active,
+  dir,
+  onClick,
+  align = "left",
+}: {
+  label: string;
+  active: boolean;
+  dir: SortDir;
+  onClick: () => void;
+  align?: "left" | "right";
+}) {
+  const Icon = !active ? ArrowUpDown : dir === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 uppercase tracking-wider font-medium transition-colors ${
+        active ? "text-white" : "text-gray-400 hover:text-gray-200"
+      } ${align === "right" ? "flex-row-reverse" : ""}`}
+    >
+      {label}
+      <Icon className="w-3.5 h-3.5" />
+    </button>
   );
 }
 

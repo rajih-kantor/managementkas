@@ -756,8 +756,13 @@ function CalcInputBlock({
       <div className="mt-5 p-4 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
-            <div className="text-[11px] uppercase tracking-wide text-gray-600 font-semibold">
-              Unit Portofolio Tujuan (otomatis)
+            <div className="flex items-center gap-1.5">
+              <div className="text-[11px] uppercase tracking-wide text-gray-600 font-semibold">
+                Unit Portofolio Tujuan (otomatis)
+              </div>
+              <InfoTip
+                text={`Rumus switching standar:\n(Unit Porto Asal × NAB Asal) ÷ NAB Tujuan\n\nSemua dari input user.`}
+              />
             </div>
             <div className="text-xs text-gray-500 font-mono mt-0.5">
               = (Unit Asal × NAB Asal) ÷ NAB Tujuan
@@ -956,19 +961,28 @@ function ResultsBlock({
             label="Min. Unit"
             formula={`${fmtNum(minQtyAsal)} × ${fmtNum(nabAsal)}`}
             value={fmtMoney(minUnitAsalNominal, currency)}
+            tooltip={`Rumus:\nSwitch - MB - Min Qty (table)\n× NAB Asal (input user)\n\n= ${fmtNum(minQtyAsal)} × ${fmtNum(nabAsal)}\n= ${fmtMoney(minUnitAsalNominal, currency)}`}
           />
           <Row
             label="Min. Amount"
             formula="Switch - MB - Min Amt"
             value={fmtMoney(minAmtAsal, currency)}
+            tooltip={`Sumber: kolom table\nSwitch - MB - Min Amt (asal)\n\nNilai mentah: ${fmtNum(minAmtAsal)}`}
           />
         </ResultCard>
         <ResultCard title="Tujuan" subtitle={tujuan["Name"] ?? "-"} tone="amber">
-          <Row label="Min. Unit" formula="—" value="null" dim />
+          <Row
+            label="Min. Unit"
+            formula="—"
+            value="null"
+            dim
+            tooltip="Tujuan tidak punya field Min Unit (sesuai spec)"
+          />
           <Row
             label="Min. Amount"
             formula="Subscription - MB - Min Amt"
             value={fmtMoney(minAmtTujuan, currency)}
+            tooltip={`Sumber: kolom table\nSubscription - MB - Min Amt (tujuan)\n\nNilai mentah: ${fmtNum(minAmtTujuan)}`}
           />
         </ResultCard>
       </div>
@@ -983,24 +997,28 @@ function ResultsBlock({
             formula="Switch - MB - Min Balance After Trade"
             value={fmtNum(minBalAfter)}
             block
+            tooltip={`Sumber: kolom table\nSwitch - MB - Min Balance After Trade (asal)\n\nMinimum unit yang harus tersisa setelah switch`}
           />
           <Row
             label="Max Eligible (Unit)"
             formula={`${fmtNum(unitAsal)} − ${fmtNum(minBalAfter)}`}
             value={`${fmtNum(maxEligibleUnit)} Unit`}
             block
+            tooltip={`Rumus:\nUnit Porto Asal (input user)\n− Min After Switch Unit (table)\n\n= ${fmtNum(unitAsal)} − ${fmtNum(minBalAfter)}\n= ${fmtNum(maxEligibleUnit)} Unit`}
           />
           <Row
             label="Min After Switch Nominal"
             formula={`${fmtNum(minBalAfter)} × ${fmtNum(nabAsal)}`}
             value={fmtMoney(minAfterSwitchNominal, currency)}
             block
+            tooltip={`Rumus:\nMin After Switch Unit (table)\n× NAB Asal (input user)\n\n= ${fmtNum(minBalAfter)} × ${fmtNum(nabAsal)}\n= ${fmtMoney(minAfterSwitchNominal, currency)}`}
           />
           <Row
             label="Max Eligible Amount"
             formula={`(${fmtNum(unitAsal)} × ${fmtNum(nabAsal)}) − ${fmtNum(minAfterSwitchNominal)}`}
             value={fmtMoney(maxEligibleAmount, currency)}
             block
+            tooltip={`Rumus:\n(Unit Porto × NAB Asal)\n− Min After Switch Nominal\n\n= (${fmtNum(unitAsal)} × ${fmtNum(nabAsal)}) − ${fmtNum(minAfterSwitchNominal)}\n= ${fmtMoney(maxEligibleAmount, currency)}`}
           />
         </div>
       </div>
@@ -1019,6 +1037,12 @@ function ResultsBlock({
                 ? `${fmtNum(highest.unit)} Unit  ·  ${fmtMoney(highest.amount, currency)}  (${highest.label})`
                 : "—"
             }
+            tooltip={`Rumus: ambil max dari kandidat (konversi ke unit via NAB Asal)\n\nKandidat:\n${cand
+              .map(
+                (c) =>
+                  `• ${c.label}: ${fmtNum(c.unit)} Unit / ${fmtMoney(c.amount, currency)}`,
+              )
+              .join("\n")}\n\nSumber:\n• Min Unit Asal = Switch - MB - Min Qty (table)\n• Min Amount Asal = Switch - MB - Min Amt (table) ÷ NAB Asal\n• Min Amount Tujuan = Subscription - MB - Min Amt (table) ÷ NAB Asal`}
           />
           <CheckRow
             no={2}
@@ -1030,6 +1054,7 @@ function ResultsBlock({
                 : "—"
             }
             ok={check2OK}
+            tooltip={`Bandingkan:\nMax Eligible Unit (hasil Validate) ≥ Min Unit (Pengecekan #1)\n\n= ${fmtNum(maxEligibleUnit)} ≥ ${fmtNum(highest?.unit ?? null)}\n= ${check2OK ? "OK" : "NOT OK"}`}
           />
           <CheckRow
             no={3}
@@ -1041,6 +1066,7 @@ function ResultsBlock({
                 : "—"
             }
             ok={check3OK}
+            tooltip={`Bandingkan:\nMax Eligible Unit ≤ Unit Porto Asal (input)\n\n= ${fmtNum(maxEligibleUnit)} ≤ ${fmtNum(unitAsal)}\n= ${check3OK ? "OK" : "NOT OK"}`}
           />
           <CheckRow
             no={4}
@@ -1052,6 +1078,7 @@ function ResultsBlock({
                 : "Max Holding tujuan tidak ada"
             }
             ok={check4OK}
+            tooltip={`Sumber:\n• Max Holding = Max Holding (Amt/Unit) tujuan (table)\n• Unit Porto Asal (input user)\n\nBandingkan: ${fmtNum(maxHolding)} ≥ ${fmtNum(unitAsal)}\n= ${check4OK ? "OK" : "NOT OK"}`}
           />
         </div>
       </div>
@@ -1151,8 +1178,13 @@ function ConfirmationCalc({
         <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-200">
           <div className="flex items-baseline justify-between gap-3 flex-wrap">
             <div>
-              <div className="text-sm font-semibold text-gray-900">
-                A — Biaya Switching
+              <div className="flex items-center gap-1.5">
+                <div className="text-sm font-semibold text-gray-900">
+                  A — Biaya Switching
+                </div>
+                <InfoTip
+                  text={`Rumus:\nEstimated Switch Value (input) × Switching Fee % (input) ÷ 100\n\n= ${fmtNum(estNum)} × ${fee || "0"}%\n= ${fmtMoney(A, currency)}`}
+                />
               </div>
               <div className="text-[11px] text-gray-500 mt-0.5 font-mono">
                 = Estimated Switch Value × Switching Fee
@@ -1170,8 +1202,13 @@ function ConfirmationCalc({
         <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-300">
           <div className="flex items-baseline justify-between gap-3 flex-wrap">
             <div>
-              <div className="text-sm font-semibold text-gray-900">
-                B — Hasil Sesungguhnya
+              <div className="flex items-center gap-1.5">
+                <div className="text-sm font-semibold text-gray-900">
+                  B — Hasil Sesungguhnya
+                </div>
+                <InfoTip
+                  text={`Rumus:\nEstimated Switch Value (input) − A (biaya switching)\n\n= ${fmtNum(estNum)} − ${fmtNum(A)}\n= ${fmtMoney(B, currency)}`}
+                />
               </div>
               <div className="text-[11px] text-gray-500 mt-0.5 font-mono">
                 = Estimated Switch Value − A
@@ -1259,19 +1296,24 @@ function Row({
   value,
   dim,
   block,
+  tooltip,
 }: {
   label: string;
   formula?: string;
   value: string;
   dim?: boolean;
   block?: boolean;
+  tooltip?: string;
 }) {
   return (
     <div
       className={`${block ? "p-3 rounded-xl border border-amber-100 bg-amber-50/40" : ""}`}
     >
       <div className="flex items-baseline justify-between gap-2 flex-wrap">
-        <div className="text-sm font-semibold text-gray-800">{label}</div>
+        <div className="flex items-center gap-1.5">
+          <div className="text-sm font-semibold text-gray-800">{label}</div>
+          {tooltip && <InfoTip text={tooltip} />}
+        </div>
         <div
           className={`font-mono tabular-nums font-bold ${
             dim ? "text-gray-400" : "text-gray-900"
@@ -1289,6 +1331,24 @@ function Row({
   );
 }
 
+function InfoTip({ text }: { text: string }) {
+  return (
+    <span className="relative group inline-flex">
+      <Info
+        className="w-3.5 h-3.5 text-amber-500 cursor-help"
+        aria-label={text}
+      />
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-30 w-64 rounded-lg bg-gray-900 text-white text-[11px] font-normal px-3 py-2 shadow-lg opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity whitespace-pre-line text-left font-mono leading-relaxed"
+      >
+        {text}
+        <span className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-gray-900" />
+      </span>
+    </span>
+  );
+}
+
 function CheckRow({
   no,
   label,
@@ -1296,6 +1356,7 @@ function CheckRow({
   value,
   ok,
   detail,
+  tooltip,
 }: {
   no: number;
   label: string;
@@ -1303,6 +1364,7 @@ function CheckRow({
   value: string;
   ok?: boolean | null;
   detail?: string;
+  tooltip?: string;
 }) {
   return (
     <div className="flex items-start gap-3 p-3 rounded-xl bg-white border border-amber-200">
@@ -1312,7 +1374,10 @@ function CheckRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2 flex-wrap">
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-gray-900">{label}</div>
+            <div className="flex items-center gap-1.5">
+              <div className="text-sm font-semibold text-gray-900">{label}</div>
+              {tooltip && <InfoTip text={tooltip} />}
+            </div>
             {description && (
               <div className="text-xs text-amber-800 mt-0.5 italic">
                 {description}

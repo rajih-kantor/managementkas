@@ -1,11 +1,16 @@
 export type AssetFundValue = string | null;
 export type AssetFundRow = Record<string, AssetFundValue>;
 
+export type SourceType = "xlsx" | "csv" | "txt";
+
 export type ParseResult = {
   rows: AssetFundRow[];
   headers: string[];
   fileName: string;
   uploadedAt: string;
+  sourceType: SourceType;
+  warnings: string[];
+  delimiter?: string;
 };
 
 export type StoredData = ParseResult;

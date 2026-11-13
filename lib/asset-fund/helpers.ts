@@ -1,36 +1,8 @@
-import type { AssetFundRow, StoredData } from "./types";
+import type { AssetFundRow } from "./types";
 import { AMT_FIELDS, BOOL_FIELDS, DATE_FIELDS, SECTION_MAP } from "./types";
-
-const STORAGE_KEY = "asset-fund-data-v1";
 
 export function normalizeName(s: string): string {
   return s.replace(/\s+/g, " ").trim().toUpperCase();
-}
-
-export function saveToStorage(data: StoredData): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch (e) {
-    console.error("Gagal save ke localStorage", e);
-    throw new Error("Data terlalu besar untuk localStorage");
-  }
-}
-
-export function loadFromStorage(): StoredData | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as StoredData;
-  } catch {
-    return null;
-  }
-}
-
-export function clearStorage(): void {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem(STORAGE_KEY);
 }
 
 export type NameIndex = Map<string, AssetFundRow[]>;

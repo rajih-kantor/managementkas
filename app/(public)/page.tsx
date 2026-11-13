@@ -12,6 +12,7 @@ import {
   ArrowDownRight,
   PartyPopper,
   FileText,
+  Calculator,
 } from "lucide-react";
 import InfoPembayaran from "../components/public/InfoPembayaran";
 
@@ -88,14 +89,24 @@ export default async function LandingPage() {
             </div>
             <span className="font-bold text-lg text-gray-900">Kas Kantor</span>
           </div>
-          <Link
-            href="/timesheet"
-            className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-600 
-             text-white font-semibold px-5 py-3 rounded-full transition shadow-lg"
-          >
-            <FileText className="w-5 h-5" />
-            Generate Timesheet
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/rumus"
+              className="inline-flex items-center gap-2 bg-white hover:bg-amber-100
+               text-gray-900 font-semibold px-4 py-2.5 md:px-5 md:py-3 rounded-full border-2 border-amber-200 transition shadow-sm"
+            >
+              <Calculator className="w-5 h-5" />
+              <span className="hidden sm:inline">Rumus</span>
+            </Link>
+            <Link
+              href="/timesheet"
+              className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-600
+               text-white font-semibold px-4 py-2.5 md:px-5 md:py-3 rounded-full transition shadow-lg"
+            >
+              <FileText className="w-5 h-5" />
+              <span className="hidden sm:inline">Generate Timesheet</span>
+            </Link>
+          </div>
         </div>
       </nav>
 

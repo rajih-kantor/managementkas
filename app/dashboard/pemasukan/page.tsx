@@ -46,6 +46,11 @@ const formatTgl = (d: string) => {
   const [y, m, day] = d.split("-");
   return `${day}/${m}/${y}`;
 };
+const formatPeriode = (d: string) => {
+  const [y, m] = d.split("-");
+  const idx = parseInt(m, 10) - 1;
+  return `${BULAN[idx]} ${y}`;
+};
 
 const BULAN = [
   "Januari",
@@ -389,7 +394,7 @@ export default function PemasukanPage() {
   // Daftar tahun unik dari data (untuk opsi filter)
   const tahunList = useMemo(() => {
     const set = new Set<string>();
-    rows.forEach((r) => set.add(r.tanggal.slice(0, 4)));
+    rows.forEach((r) => set.add(r.periode.slice(0, 4)));
     const now = new Date().getFullYear().toString();
     set.add(now);
     return Array.from(set).sort((a, b) => b.localeCompare(a));
@@ -401,7 +406,7 @@ export default function PemasukanPage() {
       (r.kategori?.nama ?? "").toLowerCase().includes(search.toLowerCase()) ||
       (r.pegawai?.nama ?? "").toLowerCase().includes(search.toLowerCase()) ||
       (r.catatan ?? "").toLowerCase().includes(search.toLowerCase());
-    const [y, m] = r.tanggal.split("-");
+    const [y, m] = r.periode.split("-");
     const matchBulan = !filterBulan || m === filterBulan;
     const matchTahun = !filterTahun || y === filterTahun;
     return matchSearch && matchBulan && matchTahun;
@@ -537,7 +542,7 @@ export default function PemasukanPage() {
               <tr className="text-left text-xs text-gray-400 uppercase tracking-wider">
                 <th className="px-6 py-3 font-medium">
                   <SortHeader
-                    label="Tanggal"
+                    label="Periode"
                     active={sortBy === "tanggal"}
                     dir={sortDir}
                     onClick={() => toggleSort("tanggal")}
@@ -578,8 +583,8 @@ export default function PemasukanPage() {
                   key={r.id}
                   className="hover:bg-gray-800/30 transition-colors"
                 >
-                  <td className="px-6 py-4 text-gray-300 font-mono text-xs">
-                    {formatTgl(r.periode)}
+                  <td className="px-6 py-4 text-gray-300 text-xs">
+                    {formatPeriode(r.periode)}
                   </td>
                   <td className="px-6 py-4 text-white">
                     {r.kategori?.nama ?? "-"}

@@ -5,16 +5,17 @@ import {
   Wallet,
   TrendingUp,
   TrendingDown,
-  Users,
   Sparkles,
   LogIn,
   ArrowUpRight,
   ArrowDownRight,
-  PartyPopper,
   FileText,
   Calculator,
 } from "lucide-react";
 import InfoPembayaran from "../components/public/InfoPembayaran";
+import TunggakanList, {
+  type TunggakanRow,
+} from "../components/public/TunggakanList";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -54,29 +55,64 @@ export const revalidate = 60; // ISR 1 menit
 
 export default async function LandingPage() {
   const supabase = await createClient();
-  const periodeIni = periodeTarget(0);
-  const periodeLalu = periodeTarget(-1);
 
-  const [saldoRes, feedRes, tIniRes, tLaluRes] = await Promise.all([
+  const namaBulan = (offset: number) =>
+    new Date(
+      new Date().setMonth(new Date().getMonth() + offset),
+    ).toLocaleDateString("id-ID", { month: "long" });
+
+  // Fetch tunggakan Januari tahun ini sampai bulan ini (tidak lewat ke tahun lain)
+  const bulanSekarang = new Date().getMonth(); // 0 = Januari
+  const periodeOffsets = Array.from(
+    { length: bulanSekarang + 1 },
+    (_, i) => -i,
+  );
+
+  const [saldoRes, feedRes, ...tunggakanRes] = await Promise.all([
     supabase.from("saldo_summary").select("*").single(),
     supabase
       .from("transaksi_publik")
       .select("*")
       .order("tanggal", { ascending: false })
       .limit(10),
-    supabase.rpc("tunggakan_iuran", { periode_target: periodeIni }),
-    supabase.rpc("tunggakan_iuran", { periode_target: periodeLalu }),
+    ...periodeOffsets.map((off) =>
+      supabase.rpc("tunggakan_iuran", { periode_target: periodeTarget(off) }),
+    ),
   ]);
 
   const saldo = saldoRes.data;
   const feed = feedRes.data ?? [];
-  const tIni = tIniRes.data ?? [];
-  const tLalu = tLaluRes.data ?? [];
 
-  const namaBulan = (offset: number) =>
-    new Date(
-      new Date().setMonth(new Date().getMonth() + offset),
-    ).toLocaleDateString("id-ID", { month: "long" });
+  const tunggakanMap = new Map<string, TunggakanRow & { _idx: number[] }>();
+  tunggakanRes.forEach((res, i) => {
+    const offset = periodeOffsets[i];
+    const bulan = namaBulan(offset);
+    const monthIdx = new Date().getMonth() + offset; // 0 = Jan tahun ini
+    const rows = (res.data ?? []) as { inisial: string; jabatan: string }[];
+    rows.forEach((p) => {
+      const key = `${p.inisial}__${p.jabatan ?? ""}`;
+      const existing = tunggakanMap.get(key);
+      if (existing) {
+        existing.bulan.push(bulan);
+        existing._idx.push(monthIdx);
+      } else {
+        tunggakanMap.set(key, {
+          inisial: p.inisial,
+          jabatan: p.jabatan,
+          bulan: [bulan],
+          _idx: [monthIdx],
+        });
+      }
+    });
+  });
+  const tunggakan: TunggakanRow[] = Array.from(tunggakanMap.values())
+    .map(({ _idx, bulan, ...rest }) => {
+      const pairs = bulan
+        .map((b, i) => ({ b, i: _idx[i] }))
+        .sort((a, b) => a.i - b.i);
+      return { ...rest, bulan: pairs.map((p) => p.b) };
+    })
+    .sort((a, b) => a.inisial.localeCompare(b.inisial));
 
   return (
     <div className={`${poppins.className} min-h-screen bg-amber-50`}>
@@ -162,20 +198,12 @@ export default async function LandingPage() {
           <h2 className="text-2xl md:text-3xl font-black text-gray-900 mb-1">
             Yang Belum Setor Iuran 👀
           </h2>
-          <p className="text-gray-500 text-sm">Nama disamarkan demi privasi</p>
+          <p className="text-gray-500 text-sm">
+            Nama disamarkan demi privasi — badge menunjukkan bulan yang belum
+            dibayar
+          </p>
         </div>
-        <div className="grid md:grid-cols-2 gap-4">
-          <TunggakanCard
-            title={`Bulan Ini (${namaBulan(0)})`}
-            data={tIni}
-            color="orange"
-          />
-          <TunggakanCard
-            title={`Bulan Lalu (${namaBulan(-1)})`}
-            data={tLalu}
-            color="red"
-          />
-        </div>
+        <TunggakanList data={tunggakan} />
       </section>
 
       {/* FEED */}
@@ -298,55 +326,3 @@ function StatCard({
   );
 }
 
-function TunggakanCard({
-  title,
-  data,
-  color,
-}: {
-  title: string;
-  data: { inisial: string; jabatan: string }[];
-  color: "orange" | "red";
-}) {
-  const border = color === "orange" ? "border-orange-200" : "border-red-200";
-  const badge =
-    color === "orange"
-      ? "bg-orange-100 text-orange-700"
-      : "bg-red-100 text-red-700";
-
-  return (
-    <div className={`bg-white rounded-3xl p-6 border-2 ${border} shadow-lg`}>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-bold text-gray-900">{title}</h3>
-        <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${badge}`}>
-          {data.length} orang
-        </span>
-      </div>
-
-      {data.length === 0 ? (
-        <div className="flex flex-col items-center py-6 text-center">
-          <PartyPopper className="w-8 h-8 text-green-500 mb-2" />
-          <div className="font-semibold text-gray-700">Semua sudah setor!</div>
-          <div className="text-xs text-gray-400">Mantap 🎊</div>
-        </div>
-      ) : (
-        <ul className="space-y-2 max-h-96 overflow-y-auto pr-1 scroll-smooth">
-          {data.map((p, i) => (
-            <li
-              key={i}
-              className="flex items-center gap-3 p-2.5 rounded-xl bg-gray-50"
-            >
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-300 to-gray-400 flex items-center justify-center shrink-0">
-                <Users className="w-4 h-4 text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-mono font-bold text-gray-900 text-sm tracking-wider truncate">
-                  {p.inisial}
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}

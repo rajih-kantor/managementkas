@@ -18,7 +18,7 @@ import {
   ArrowDown,
 } from "lucide-react";
 
-type SortKey = "tanggal" | "kategori" | "pegawai" | "nominal";
+type SortKey = "tanggal" | "kategori" | "pegawai" | "nominal" | "created_at";
 type SortDir = "asc" | "desc";
 
 type Kategori = { id: string; nama: string };
@@ -37,6 +37,7 @@ type Transaksi = {
   bukti_path: string | null;
   kategori_id: string | null;
   pegawai_id: string | null;
+  created_at: string;
   kategori: { nama: string } | null;
   pegawai: { nama: string } | null;
 };
@@ -50,6 +51,11 @@ const formatPeriode = (d: string) => {
   const [y, m] = d.split("-");
   const idx = parseInt(m, 10) - 1;
   return `${BULAN[idx]} ${y}`;
+};
+const formatCreatedAt = (iso: string) => {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
 const BULAN = [
@@ -85,7 +91,11 @@ export default function PemasukanPage() {
       setSortDir(sortDir === "asc" ? "desc" : "asc");
     } else {
       setSortBy(key);
-      setSortDir(key === "tanggal" || key === "nominal" ? "desc" : "asc");
+      setSortDir(
+        key === "tanggal" || key === "nominal" || key === "created_at"
+          ? "desc"
+          : "asc",
+      );
     }
   }
 
@@ -208,7 +218,7 @@ export default function PemasukanPage() {
       .from("transaksi")
       .select(
         `
-        id, nominal, tanggal, periode, catatan, bukti_path, kategori_id, pegawai_id,
+        id, nominal, tanggal, periode, catatan, bukti_path, kategori_id, pegawai_id, created_at,
         kategori:kategori_id (nama),
         pegawai:pegawai_id (nama)
       `,
@@ -436,6 +446,10 @@ export default function PemasukanPage() {
           va = a.nominal;
           vb = b.nominal;
           break;
+        case "created_at":
+          va = a.created_at;
+          vb = b.created_at;
+          break;
       }
       if (va < vb) return sortDir === "asc" ? -1 : 1;
       if (va > vb) return sortDir === "asc" ? 1 : -1;
@@ -574,6 +588,14 @@ export default function PemasukanPage() {
                     align="right"
                   />
                 </th>
+                <th className="px-6 py-3 font-medium">
+                  <SortHeader
+                    label="Dibuat"
+                    active={sortBy === "created_at"}
+                    dir={sortDir}
+                    onClick={() => toggleSort("created_at")}
+                  />
+                </th>
                 <th className="px-6 py-3 font-medium text-center">Aksi</th>
               </tr>
             </thead>
@@ -597,6 +619,9 @@ export default function PemasukanPage() {
                   </td>
                   <td className="px-6 py-4 text-right text-white font-mono tabular-nums font-semibold">
                     {formatRp(r.nominal)}
+                  </td>
+                  <td className="px-6 py-4 text-gray-400 font-mono text-xs whitespace-nowrap">
+                    {formatCreatedAt(r.created_at)}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center justify-center gap-1">

@@ -61,12 +61,15 @@ export default async function LandingPage() {
       new Date().setMonth(new Date().getMonth() + offset),
     ).toLocaleDateString("id-ID", { month: "long" });
 
-  // Fetch tunggakan Januari tahun ini sampai bulan ini (tidak lewat ke tahun lain)
+  // Tunggakan baru ditampilkan mulai tahun 2027
+  const tahunSekarang = new Date().getFullYear();
+  const tampilkanTunggakan = tahunSekarang >= 2027;
+
+  // Fetch tunggakan Januari tahun ini sampai bulan ini (skip kalau belum 2027)
   const bulanSekarang = new Date().getMonth(); // 0 = Januari
-  const periodeOffsets = Array.from(
-    { length: bulanSekarang + 1 },
-    (_, i) => -i,
-  );
+  const periodeOffsets = tampilkanTunggakan
+    ? Array.from({ length: bulanSekarang + 1 }, (_, i) => -i)
+    : [];
 
   const [saldoRes, feedRes, ...tunggakanRes] = await Promise.all([
     supabase.from("saldo_summary").select("*").single(),
@@ -192,19 +195,21 @@ export default async function LandingPage() {
 
       <InfoPembayaran />
 
-      {/* TUNGGAKAN */}
-      <section className="max-w-5xl mx-auto px-6 mb-12">
-        <div className="text-center mb-6">
-          <h2 className="text-2xl md:text-3xl font-black text-gray-900 mb-1">
-            Yang Belum Setor Iuran 👀
-          </h2>
-          <p className="text-gray-500 text-sm">
-            Nama disamarkan demi privasi — badge menunjukkan bulan yang belum
-            dibayar
-          </p>
-        </div>
-        <TunggakanList data={tunggakan} />
-      </section>
+      {/* TUNGGAKAN — mulai ditampilkan tahun 2027 */}
+      {tampilkanTunggakan && (
+        <section className="max-w-5xl mx-auto px-6 mb-12">
+          <div className="text-center mb-6">
+            <h2 className="text-2xl md:text-3xl font-black text-gray-900 mb-1">
+              Yang Belum Setor Iuran 👀
+            </h2>
+            <p className="text-gray-500 text-sm">
+              Nama disamarkan demi privasi — badge menunjukkan bulan yang belum
+              dibayar
+            </p>
+          </div>
+          <TunggakanList data={tunggakan} />
+        </section>
+      )}
 
       {/* FEED */}
       <section className="max-w-5xl mx-auto px-6 pb-16">

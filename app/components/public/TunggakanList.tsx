@@ -15,11 +15,7 @@ export default function TunggakanList({ data }: { data: TunggakanRow[] }) {
   const filtered = useMemo(() => {
     const q = query.toLowerCase().trim();
     if (!q) return data;
-    return data.filter(
-      (p) =>
-        p.inisial.toLowerCase().includes(q) ||
-        p.jabatan.toLowerCase().includes(q),
-    );
+    return data.filter((p) => p.inisial.toLowerCase().includes(q));
   }, [query, data]);
 
   return (
@@ -31,7 +27,7 @@ export default function TunggakanList({ data }: { data: TunggakanRow[] }) {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Cari nama atau jabatan..."
+            placeholder="Cari nama..."
             className="w-full pl-10 pr-4 py-2.5 rounded-full border-2 border-amber-200 bg-amber-50/50 focus:outline-none focus:border-amber-400 text-sm text-gray-900 placeholder:text-gray-400"
           />
         </div>
@@ -64,11 +60,6 @@ export default function TunggakanList({ data }: { data: TunggakanRow[] }) {
                 <div className="font-mono font-bold text-gray-900 text-sm tracking-wider truncate">
                   {p.inisial}
                 </div>
-                {p.jabatan && (
-                  <div className="text-xs text-gray-500 mt-0.5 truncate">
-                    {p.jabatan}
-                  </div>
-                )}
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   {p.bulan.map((b) => (
                     <span
